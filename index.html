@@ -1,187 +1,108 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ESP32 Web Control</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 28px; max-width: 560px; }
-    .card { border: 1px solid #ddd; border-radius: 14px; padding: 16px; margin: 12px 0; }
-    .row { display:flex; justify-content:space-between; align-items:center; gap:16px; }
-    .muted { color:#555; font-size:0.92em; }
-    .status { margin: 8px 0 12px; }
-    .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; background:#ef4444; }
-    .dot.ok { background:#22c55e; }
-    button { padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer; min-width: 110px; }
-    .on { background:#0ea5e9; color:white; }
-    .off { background:#e5e7eb; color:#111; }
-    input { width:100%; padding:10px; border-radius:10px; border:1px solid #ccc; }
-    .grid { display:grid; gap:10px; }
-    code { background:#f3f4f6; padding:2px 6px; border-radius:6px; word-break:break-all; }
-    #log { white-space: pre-wrap; background:#0b1220; color:#d1e7ff; padding:12px; border-radius:12px; font-size:12px; }
-  </style>
-</head>
-<body>
-  <h2>ESP32 Web Control (GPIO26 & GPIO27)</h2>
+https://unpkg.com/mqtt/dist/mqtt.min.js</script>
+<script>
+  const t26Set   = "home/esp32/gpio26/set";
+  const t27Set   = "home/esp32/gpio27/set";
+  const t26State = "home/esp32/gpio26/state";
+  const t27State = "home/esp32/gpio27/state";
 
-  <div class="status muted">
-    <span id="dot" class="dot"></span>
-    <span id="conn">Disconnected</span>
-  </div>
+  let client = null;
+  let s26 = "OFF", s27 = "OFF";
 
-  <div class="card">
-    <div class="grid">
-      <div><b>HiveMQ Host</b></div>
-      <input id="host" value="" placeholder="xxxxxxx.s1.eu.hivemq.cloud" />
+  const logEl = document.getElementById("log");
+  const wsurlEl = document.getElementById("wsurl");
+  const errEl = document.getElementById("lasterr");
 
-      <div><b>WebSocket Port (HiveMQ uses 8884)</b></div>
-      <input id="port" value="8884" />
+  function log(msg) {
+    logEl.textContent += msg + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(msg);
+  }
 
-      <div><b>Username (MQTT Credentials)</b></div>
-      <input id="user" placeholder="your mqtt username" />
+  function getUrl() {
+    const host = document.getElementById("host").value.trim();
+    const port = document.getElementById("port").value.trim() || "8884";
+    return `wss://${host}:${port}/mqtt`; // correct for HiveMQ Cloud [1](https://randomnerdtutorials.com/esp32-https-requests/)[2](https://microcontrollerslab.com/esp32-https-requests/)
+  }
 
-      <div><b>Password</b></div>
-      <input id="pass" type="password" placeholder="your mqtt password" />
+  // 🔎 1) Raw WebSocket test (no MQTT yet)
+  function testWebSocket() {
+    const url = getUrl();
+    wsurlEl.textContent = url;
+    errEl.textContent = "-";
+    log("WS TEST: opening " + url);
 
-      <button id="connectBtn">Connect</button>
+    // HiveMQ Cloud expects /mqtt and secure websocket on 8884 [1](https://randomnerdtutorials.com/esp32-https-requests/)[2](https://microcontrollerslab.com/esp32-https-requests/)
+    const ws = new WebSocket(url, "mqtt");
 
-      <div class="muted">WSS URL: <code id="wsurl">-</code></div>
-      <div class="muted">Last error: <code id="lasterr">-</code></div>
-    </div>
-  </div>
+    const timer = setTimeout(() => {
+      log("WS TEST: ❌ timeout (likely blocked by network/firewall)");
+      errEl.textContent = "WebSocket timeout (network may block port 8884)";
+      try { ws.close(); } catch(e) {}
+    }, 15000);
 
-  <div class="card">
-    <div class="row">
-      <div><b>GPIO 26</b></div>
-      <button id="b26" class="off">OFF</button>
-    </div>
-  </div>
+    ws.onopen = () => { clearTimeout(timer); log("WS TEST: ✅ open (port reachable)"); ws.close(); };
+    ws.onerror = () => { clearTimeout(timer); log("WS TEST: ❌ error (blocked or DNS issue)"); errEl.textContent = "WebSocket error"; };
+    ws.onclose = (e) => { clearTimeout(timer); log(`WS TEST: closed (code=${e.code})`); };
+  }
 
-  <div class="card">
-    <div class="row">
-      <div><b>GPIO 27</b></div>
-      <button id="b27" class="off">OFF</button>
-    </div>
-  </div>
+  // 🔌 2) MQTT connect (after WS is confirmed)
+  function connectMqtt() {
+    const host = document.getElementById("host").value.trim();
+    const user = document.getElementById("user").value.trim();
+    const pass = document.getElementById("pass").value;
 
-  <div class="card">
-    <div class="muted"><b>Debug log</b></div>
-    <div id="log">Ready...\n</div>
-  </div>
+    const url = getUrl();
+    wsurlEl.textContent = url;
+    errEl.textContent = "-";
 
-  https://unpkg.com/mqtt/dist/mqtt.min.js</script>
-  <script>
-    const t26Set   = "home/esp32/gpio26/set";
-    const t27Set   = "home/esp32/gpio27/set";
-    const t26State = "home/esp32/gpio26/state";
-    const t27State = "home/esp32/gpio27/state";
-
-    let client = null;
-    let s26 = "OFF", s27 = "OFF";
-
-    const dot = document.getElementById("dot");
-    const conn = document.getElementById("conn");
-    const wsurlEl = document.getElementById("wsurl");
-    const errEl = document.getElementById("lasterr");
-    const logEl = document.getElementById("log");
-
-    const b26 = document.getElementById("b26");
-    const b27 = document.getElementById("b27");
-    const connectBtn = document.getElementById("connectBtn");
-
-    function log(msg) {
-      logEl.textContent += msg + "\n";
-      logEl.scrollTop = logEl.scrollHeight;
-      console.log(msg);
+    if (!host || !user || !pass) {
+      errEl.textContent = "Missing host/user/pass";
+      return;
     }
 
-    function setStatus(isOk, text) {
-      if (isOk) dot.classList.add("ok");
-      else dot.classList.remove("ok");
-      conn.textContent = text;
-    }
+    if (client) { try { client.end(true); } catch(e) {} client = null; }
 
-    function setButton(btn, state) {
-      state = (state || "").toUpperCase();
-      if (state === "ON") { btn.textContent = "ON"; btn.className = "on"; }
-      else { btn.textContent = "OFF"; btn.className = "off"; }
-    }
+    const clientId = "web-" + Math.random().toString(16).slice(2);
+    log("MQTT: Connecting to " + url);
 
-    function connect() {
-      const host = document.getElementById("host").value.trim();
-      const port = document.getElementById("port").value.trim() || "8884";
-      const user = document.getElementById("user").value.trim();
-      const pass = document.getElementById("pass").value;
+    // Watchdog in case connect never resolves
+    let watchdog = setTimeout(() => {
+      log("MQTT: ❌ still not connected after 15s (likely blocked port 8884)");
+      errEl.textContent = "MQTT connect timeout (network may block port 8884)";
+      try { client?.end(true); } catch(e) {}
+    }, 15000);
 
-      const url = `wss://${host}:${port}/mqtt`;
-      wsurlEl.textContent = url;
-      errEl.textContent = "-";
+    client = mqtt.connect(url, {
+      clientId,
+      username: user,
+      password: pass,
+      clean: true,
+      reconnectPeriod: 2000
+    });
 
-      if (!host || !user || !pass) {
-        errEl.textContent = "Missing host/user/pass";
-        return;
-      }
+    client.on("connect", () => {
+      clearTimeout(watchdog);
+      log("MQTT: ✅ Connected!");
+      client.subscribe([t26State, t27State]);
+    });
 
-      if (client) { try { client.end(true); } catch(e) {} client = null; }
+    client.on("error", (e) => {
+      clearTimeout(watchdog);
+      log("MQTT: ❌ Error: " + (e?.message || e));
+      errEl.textContent = e?.message || String(e);
+    });
 
-      const clientId = "web-" + Math.random().toString(16).slice(2);
-      log("Connecting to: " + url);
+    client.on("close", () => {
+      log("MQTT: connection closed");
+    });
 
-      client = mqtt.connect(url, {
-        clientId,
-        username: user,
-        password: pass,
-        clean: true,
-        reconnectPeriod: 2000,
-        connectTimeout: 10000
-      });
+    client.on("message", (topic, payload) => {
+      const msg = payload.toString().trim().toUpperCase();
+      log(`${topic} => ${msg}`);
+    });
+  }
 
-      client.on("connect", () => {
-        setStatus(true, "Connected");
-        log("Connected!");
-        client.subscribe([t26State, t27State]);
-      });
-
-      client.on("reconnect", () => {
-        setStatus(false, "Reconnecting...");
-        log("Reconnecting...");
-      });
-
-      client.on("close", () => {
-        setStatus(false, "Disconnected");
-        log("Connection closed.");
-      });
-
-      client.on("error", (e) => {
-        errEl.textContent = e?.message || e;
-        log("Error: " + (e?.message || e));
-      });
-
-      client.on("message", (topic, payload) => {
-        const msg = payload.toString().trim().toUpperCase();
-        log(`${topic} => ${msg}`);
-        if (topic === t26State) { s26 = msg; setButton(b26, s26); }
-        if (topic === t27State) { s27 = msg; setButton(b27, s27); }
-      });
-    }
-
-    function toggle26() {
-      if (!client) return alert("Connect first");
-      const next = (s26 === "ON") ? "OFF" : "ON";
-      client.publish(t26Set, next);
-      log(`Publish ${t26Set} => ${next}`);
-    }
-
-    function toggle27() {
-      if (!client) return alert("Connect first");
-      const next = (s27 === "ON") ? "OFF" : "ON";
-      client.publish(t27Set, next);
-      log(`Publish ${t27Set} => ${next}`);
-    }
-
-    connectBtn.addEventListener("click", connect);
-    b26.addEventListener("click", toggle26);
-    b27.addEventListener("click", toggle27);
-  </script>
-</body>
-</html>
+  // Hook your buttons (add two buttons in HTML with these ids)
+  document.getElementById("wsTestBtn").addEventListener("click", testWebSocket);
+  document.getElementById("connectBtn").addEventListener("click", connectMqtt);
+</script>
