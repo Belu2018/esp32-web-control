@@ -3,323 +3,185 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ESP32 Web Control (HiveMQ Cloud)</title>
+  <title>ESP32 Web Control</title>
   <style>
-    :root { --bg:#0b1220; --card:#121b2f; --muted:#9fb0d0; --text:#e7eeff; --accent:#58a6ff; --good:#36d399; --bad:#ff6b6b; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
-    h1 { margin: 0 0 12px; font-size: 20px; }
-    .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
-    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
-    .card { background: var(--card); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; }
-    label { display:block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
-    input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); color: var(--text); outline: none; }
-    input:focus { border-color: rgba(88,166,255,0.7); box-shadow: 0 0 0 3px rgba(88,166,255,0.15); }
-    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center; }
-    button { cursor:pointer; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.16); background: rgba(88,166,255,0.15); color: var(--text); font-weight: 600; }
-    button:hover { background: rgba(88,166,255,0.25); }
-    button.secondary { background: rgba(255,255,255,0.06); }
-    button.secondary:hover { background: rgba(255,255,255,0.10); }
-    button.toggle { min-width: 110px; justify-content: center; display:inline-flex; }
-    .pill { display:inline-block; padding: 6px 10px; border-radius: 999px; font-size: 12px; border: 1px solid rgba(255,255,255,0.14); }
-    .pill.good { color: var(--good); border-color: rgba(54,211,153,0.35); background: rgba(54,211,153,0.08); }
-    .pill.bad { color: var(--bad); border-color: rgba(255,107,107,0.35); background: rgba(255,107,107,0.08); }
-    .pill.muted { color: var(--muted); }
-    pre { margin: 0; padding: 12px; background: rgba(0,0,0,0.35); border-radius: 12px; overflow:auto; max-height: 260px; border: 1px solid rgba(255,255,255,0.08); }
-    .hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    body { font-family: Arial, sans-serif; margin: 28px; max-width: 560px; }
+    .card { border: 1px solid #ddd; border-radius: 14px; padding: 16px; margin: 12px 0; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+    .muted { color:#555; font-size:0.92em; }
+    .status { margin: 8px 0 12px; }
+    .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; background:#ef4444; }
+    .dot.ok { background:#22c55e; }
+    button { padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer; min-width: 110px; }
+    .on { background:#0ea5e9; color:white; }
+    .off { background:#e5e7eb; color:#111; }
+    input { width:100%; padding:10px; border-radius:10px; border:1px solid #ccc; }
+    .grid { display:grid; gap:10px; }
+    code { background:#f3f4f6; padding:2px 6px; border-radius:6px; word-break:break-all; }
+    #log { white-space: pre-wrap; background:#0b1220; color:#d1e7ff; padding:12px; border-radius:12px; font-size:12px; }
   </style>
-
-  <!-- MQTT.js via CDN (unpkg). If you want faster load, host it locally. -->
-  <script src="https://unpkg.com/mqtt/dist/mcript>
 </head>
-
 <body>
-  <div class="wrap">
-    <h1>ESP32 Web Control (HiveMQ Cloud)</h1>
+  <h2>ESP32 Web Control (GPIO26 & GPIO27)</h2>
 
+  <div class="status muted">
+    <span id="dot" class="dot"></span>
+    <span id="conn">Disconnected</span>
+  </div>
+
+  <div class="card">
     <div class="grid">
-      <!-- CONNECT CARD -->
-      <div class="card">
-        <div class="row" style="justify-content:space-between;">
-          <div>
-            <div class="pill muted" id="statusPill">DISCONNECTED</div>
-          </div>
-          <div class="row">
-            <button id="btnConnect">Connect</button>
-            <button id="btnDisconnect" class="secondary" disabled>Disconnect</button>
-          </div>
-        </div>
+      <div><b>HiveMQ Host</b></div>
+      <input id="host" value="" placeholder="xxxxxxx.s1.eu.hivemq.cloud" />
 
-        <label>WSS URL (HiveMQ Cloud WebSocket + TLS listener)</label>
-        <input id="wssUrl" class="mono"
-               value="wss://267c603ceea5484c9b7c4b1e3777e721.s1.eu.hivemq.cloud:8884/mqtt" />
+      <div><b>WebSocket Port (HiveMQ uses 8884)</b></div>
+      <input id="port" value="8884" />
 
-        <div class="row">
-          <div style="flex:1; min-width: 220px;">
-            <label>Username (MQTT Credentials)</label>
-            <input id="username" value="" />
-          </div>
-          <div style="flex:1; min-width: 220px;">
-            <label>Password</label>
-            <input id="password" type="password" value="" />
-          </div>
-        </div>
+      <div><b>Username (MQTT Credentials)</b></div>
+      <input id="user" placeholder="your mqtt username" />
 
-        <div class="hint" style="margin-top:10px;">
-          Tip: This page sets a fast <span class="mono">connectTimeout</span> (4s) so it won’t sit on “Connecting…” for 30s. [1](https://deepwiki.com/mqttjs/MQTT.js/2-client-api)[2](https://www.npmjs.com/package/mqtt)
-          <br/>
-          For browsers, HiveMQ Cloud uses port <span class="mono">8884</span> with <span class="mono">wss://.../mqtt</span>. [3](https://community.hivemq.com/t/mqtt-server-not-connecting-on-port-8884/1492)[4](https://stackoverflow.com/questions/75851672/i-cant-connect-mqtt-hivemq)
-        </div>
-      </div>
+      <div><b>Password</b></div>
+      <input id="pass" type="password" placeholder="your mqtt password" />
 
-      <!-- GPIO CARD -->
-      <div class="card">
-        <h2 style="margin:0 0 12px; font-size:16px;">GPIO Controls</h2>
+      <button id="connectBtn">Connect</button>
 
-        <div class="row" style="justify-content:space-between; margin-bottom: 10px;">
-          <div>
-            <div style="font-weight:700;">GPIO 26</div>
-            <div class="hint mono" id="gpio26State">state: (unknown)</div>
-          </div>
-          <button class="toggle" id="gpio26Btn" disabled>OFF</button>
-        </div>
-
-        <div class="row" style="justify-content:space-between;">
-          <div>
-            <div style="font-weight:700;">GPIO 27</div>
-            <div class="hint mono" id="gpio27State">state: (unknown)</div>
-          </div>
-          <button class="toggle" id="gpio27Btn" disabled>OFF</button>
-        </div>
-
-        <div class="hint" style="margin-top: 12px;">
-          Topics used:
-          <div class="mono" style="margin-top:6px;">
-            home/esp32/gpio26/set &nbsp;|&nbsp; home/esp32/gpio26/state<br/>
-            home/esp32/gpio27/set &nbsp;|&nbsp; home/esp32/gpio27/state
-          </div>
-        </div>
-      </div>
-
-      <!-- DEBUG LOG -->
-      <div class="card" style="grid-column: 1 / -1;">
-        <div class="row" style="justify-content:space-between;">
-          <h2 style="margin:0; font-size:16px;">Debug log</h2>
-          <button class="secondary" id="btnClear">Clear</button>
-        </div>
-        <pre id="log" class="mono"></pre>
-      </div>
+      <div class="muted">WSS URL: <code id="wsurl">-</code></div>
+      <div class="muted">Last error: <code id="lasterr">-</code></div>
     </div>
   </div>
 
-<script>
-(() => {
-  // ===================== Topics =====================
-  const TOPIC_26_SET   = "home/esp32/gpio26/set";
-  const TOPIC_27_SET   = "home/esp32/gpio27/set";
-  const TOPIC_26_STATE = "home/esp32/gpio26/state";
-  const TOPIC_27_STATE = "home/esp32/gpio27/state";
+  <div class="card">
+    <div class="row">
+      <div><b>GPIO 26</b></div>
+      <button id="b26" class="off">OFF</button>
+    </div>
+  </div>
 
-  // ===================== UI refs =====================
-  const el = (id) => document.getElementById(id);
-  const logEl = el("log");
-  const statusPill = el("statusPill");
+  <div class="card">
+    <div class="row">
+      <div><b>GPIO 27</b></div>
+      <button id="b27" class="off">OFF</button>
+    </div>
+  </div>
 
-  const btnConnect = el("btnConnect");
-  const btnDisconnect = el("btnDisconnect");
-  const btnClear = el("btnClear");
+  <div class="card">
+    <div class="muted"><b>Debug log</b></div>
+    <div id="log">Ready...\n</div>
+  </div>
 
-  const wssUrlInput = el("wssUrl");
-  const usernameInput = el("username");
-  const passwordInput = el("password");
+  https://unpkg.com/mqtt/dist/mqtt.min.js</script>
+  <script>
+    const t26Set   = "home/esp32/gpio26/set";
+    const t27Set   = "home/esp32/gpio27/set";
+    const t26State = "home/esp32/gpio26/state";
+    const t27State = "home/esp32/gpio27/state";
 
-  const gpio26Btn = el("gpio26Btn");
-  const gpio27Btn = el("gpio27Btn");
-  const gpio26State = el("gpio26State");
-  const gpio27State = el("gpio27State");
+    let client = null;
+    let s26 = "OFF", s27 = "OFF";
 
-  // ===================== State =====================
-  let client = null;
-  let state26 = null; // true/false/null
-  let state27 = null;
+    const dot = document.getElementById("dot");
+    const conn = document.getElementById("conn");
+    const wsurlEl = document.getElementById("wsurl");
+    const errEl = document.getElementById("lasterr");
+    const logEl = document.getElementById("log");
 
-  function addLog(msg) {
-    const ts = new Date().toLocaleTimeString();
-    logEl.textContent += `[${ts}] ${msg}\n`;
-    logEl.scrollTop = logEl.scrollHeight;
-  }
+    const b26 = document.getElementById("b26");
+    const b27 = document.getElementById("b27");
+    const connectBtn = document.getElementById("connectBtn");
 
-  function setStatus(text, kind) {
-    statusPill.textContent = text;
-    statusPill.className = "pill " + (kind || "muted");
-  }
-
-  function normalizeState(payload) {
-    const s = (payload || "").toString().trim().toUpperCase();
-    return (s === "ON" || s === "1" || s === "TRUE");
-  }
-
-  function render() {
-    // GPIO 26
-    gpio26Btn.disabled = !client || !client.connected;
-    if (state26 === null) {
-      gpio26Btn.textContent = "OFF";
-      gpio26Btn.style.opacity = 0.85;
-      gpio26State.textContent = "state: (unknown)";
-    } else {
-      gpio26Btn.textContent = state26 ? "ON" : "OFF";
-      gpio26Btn.style.opacity = 1;
-      gpio26State.textContent = `state: ${state26 ? "ON" : "OFF"}`;
+    function log(msg) {
+      logEl.textContent += msg + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(msg);
     }
 
-    // GPIO 27
-    gpio27Btn.disabled = !client || !client.connected;
-    if (state27 === null) {
-      gpio27Btn.textContent = "OFF";
-      gpio27Btn.style.opacity = 0.85;
-      gpio27State.textContent = "state: (unknown)";
-    } else {
-      gpio27Btn.textContent = state27 ? "ON" : "OFF";
-      gpio27Btn.style.opacity = 1;
-      gpio27State.textContent = `state: ${state27 ? "ON" : "OFF"}`;
+    function setStatus(isOk, text) {
+      if (isOk) dot.classList.add("ok");
+      else dot.classList.remove("ok");
+      conn.textContent = text;
     }
 
-    // Connect/disconnect buttons
-    btnConnect.disabled = client && client.connected;
-    btnDisconnect.disabled = !(client && client.connected);
-  }
-
-  function safeEndClient() {
-    if (!client) return;
-    try {
-      client.end(true); // force close
-    } catch {}
-    client = null;
-    setStatus("DISCONNECTED", "bad");
-    addLog("Disconnected");
-    render();
-  }
-
-  // ===================== MQTT Connect =====================
-  function connect() {
-    const url = wssUrlInput.value.trim();
-    const username = usernameInput.value.trim();
-    const password = passwordInput.value;
-
-    if (!url.startsWith("wss://")) {
-      addLog("⚠️ URL must start with wss:// (secure websockets).");
-      return;
+    function setButton(btn, state) {
+      state = (state || "").toUpperCase();
+      if (state === "ON") { btn.textContent = "ON"; btn.className = "on"; }
+      else { btn.textContent = "OFF"; btn.className = "off"; }
     }
 
-    // If there is an existing client, close it first.
-    safeEndClient();
+    function connect() {
+      const host = document.getElementById("host").value.trim();
+      const port = document.getElementById("port").value.trim() || "8884";
+      const user = document.getElementById("user").value.trim();
+      const pass = document.getElementById("pass").value;
 
-    setStatus("CONNECTING…", "muted");
-    addLog(`Connecting to: ${url}`);
+      const url = `wss://${host}:${port}/mqtt`;
+      wsurlEl.textContent = url;
+      errEl.textContent = "-";
 
-    const t0 = performance.now();
+      if (!host || !user || !pass) {
+        errEl.textContent = "Missing host/user/pass";
+        return;
+      }
 
-    // MQTT.js options:
-    // - connectTimeout default is 30000ms; we set 4000ms to fail fast. [1](https://deepwiki.com/mqttjs/MQTT.js/2-client-api)[2](https://www.npmjs.com/package/mqtt)
-    // - reconnectPeriod default is 1000ms; we set 2000ms. [1](https://deepwiki.com/mqttjs/MQTT.js/2-client-api)[2](https://www.npmjs.com/package/mqtt)
-    const options = {
-      username,
-      password,
-      keepalive: 60,
-      clean: true,
-      connectTimeout: 4000,
-      reconnectPeriod: 2000,
-      // clientId can be set explicitly if you want:
-      // clientId: "web-" + Math.random().toString(16).slice(2),
-    };
+      if (client) { try { client.end(true); } catch(e) {} client = null; }
 
-    client = mqtt.connect(url, options);
+      const clientId = "web-" + Math.random().toString(16).slice(2);
+      log("Connecting to: " + url);
 
-    client.on("connect", () => {
-      const ms = Math.round(performance.now() - t0);
-      setStatus("CONNECTED", "good");
-      addLog(`✅ Connected in ${ms} ms`);
-
-      // Subscribe to state topics (retained messages from ESP32 will update UI quickly)
-      client.subscribe([TOPIC_26_STATE, TOPIC_27_STATE], (err) => {
-        if (err) addLog("❌ Subscribe error: " + err.message);
-        else addLog("Subscribed to state topics.");
+      client = mqtt.connect(url, {
+        clientId,
+        username: user,
+        password: pass,
+        clean: true,
+        reconnectPeriod: 2000,
+        connectTimeout: 10000
       });
 
-      render();
-    });
+      client.on("connect", () => {
+        setStatus(true, "Connected");
+        log("Connected!");
+        client.subscribe([t26State, t27State]);
+      });
 
-    client.on("message", (topic, payload) => {
-      const msg = payload.toString();
-      addLog(`Message: ${topic} => ${msg}`);
+      client.on("reconnect", () => {
+        setStatus(false, "Reconnecting...");
+        log("Reconnecting...");
+      });
 
-      if (topic === TOPIC_26_STATE) {
-        state26 = normalizeState(msg);
-        render();
-      }
-      if (topic === TOPIC_27_STATE) {
-        state27 = normalizeState(msg);
-        render();
-      }
-    });
+      client.on("close", () => {
+        setStatus(false, "Disconnected");
+        log("Connection closed.");
+      });
 
-    client.on("reconnect", () => {
-      setStatus("RECONNECTING…", "muted");
-      addLog("Reconnecting…");
-      render();
-    });
+      client.on("error", (e) => {
+        errEl.textContent = e?.message || e;
+        log("Error: " + (e?.message || e));
+      });
 
-    client.on("close", () => {
-      setStatus("DISCONNECTED", "bad");
-      addLog("Connection closed.");
-      render();
-    });
-
-    client.on("error", (err) => {
-      setStatus("ERROR", "bad");
-      addLog("❌ Error: " + (err?.message || err));
-      // Do not call end() here; mqtt.js will handle reconnect unless reconnectPeriod=0.
-      render();
-    });
-
-    render();
-  }
-
-  // ===================== Publish helpers =====================
-  function publish(topic, payload) {
-    if (!client || !client.connected) {
-      addLog("⚠️ Not connected. Cannot publish.");
-      return;
+      client.on("message", (topic, payload) => {
+        const msg = payload.toString().trim().toUpperCase();
+        log(`${topic} => ${msg}`);
+        if (topic === t26State) { s26 = msg; setButton(b26, s26); }
+        if (topic === t27State) { s27 = msg; setButton(b27, s27); }
+      });
     }
 
-    client.publish(topic, payload, { qos: 0, retain: false }, (err) => {
-      if (err) addLog("❌ Publish error: " + err.message);
-      else addLog(`Published: ${topic} <= ${payload}`);
-    });
-  }
+    function toggle26() {
+      if (!client) return alert("Connect first");
+      const next = (s26 === "ON") ? "OFF" : "ON";
+      client.publish(t26Set, next);
+      log(`Publish ${t26Set} => ${next}`);
+    }
 
-  // ===================== UI events =====================
-  btnConnect.addEventListener("click", connect);
-  btnDisconnect.addEventListener("click", safeEndClient);
-  btnClear.addEventListener("click", () => logEl.textContent = "");
+    function toggle27() {
+      if (!client) return alert("Connect first");
+      const next = (s27 === "ON") ? "OFF" : "ON";
+      client.publish(t27Set, next);
+      log(`Publish ${t27Set} => ${next}`);
+    }
 
-  gpio26Btn.addEventListener("click", () => {
-    const next = !(state26 === true);
-    publish(TOPIC_26_SET, next ? "ON" : "OFF");
-  });
-
-  gpio27Btn.addEventListener("click", () => {
-    const next = !(state27 === true);
-    publish(TOPIC_27_SET, next ? "ON" : "OFF");
-  });
-
-  // Initial UI
-  setStatus("DISCONNECTED", "bad");
-  addLog("Ready.");
-  addLog("Tip: If it feels slow, check Network tab for mqtt.min.js load time and WS handshake.");
-  render();
-})();
-</script>
+    connectBtn.addEventListener("click", connect);
+    b26.addEventListener("click", toggle26);
+    b27.addEventListener("click", toggle27);
+  </script>
 </body>
 </html>
